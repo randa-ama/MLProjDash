@@ -9,4 +9,5 @@ matplotlib
 seaborn
 numpy
 scipy
+gunicorn
 pickle
