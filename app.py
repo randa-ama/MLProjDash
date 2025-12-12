@@ -34,7 +34,6 @@ from sklearn.neighbors import KNeighborsClassifier   # <--- added back
 from sklearn.preprocessing import PolynomialFeatures, SplineTransformer
 
 # HCA imports
-from gower import gower_matrix
 from scipy.spatial.distance import squareform
 from scipy.cluster.hierarchy import linkage
 from sklearn.cluster import AgglomerativeClustering
