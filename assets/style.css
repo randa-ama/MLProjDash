@@ -1,0 +1,118 @@
+/* ============================
+   GLOBAL APP BACKGROUND
+============================ */
+body {
+    background-color: #fbfbfb !important;   /* ultra soft blush */
+    font-family: "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+/* ============================
+   MAIN APP CONTAINER
+============================ */
+#tabs-content {
+    padding: 20px;
+}
+
+/* ============================
+   TOP TABS STYLING (dcc.Tabs)
+============================ */
+.tab {
+    color: #c0587e !important;            /* muted rose text */
+    font-weight: 600;
+    background-color: #fff7fb !important; /* near-white pink */
+    border-radius: 14px 14px 0 0 !important;
+    margin-right: 6px;
+    padding: 10px 22px !important;
+    border: 1px solid #ffe1ec !important;
+}
+
+.tab:hover {
+    background-color: #fff0f6 !important;
+    color: #a84a6e !important;
+}
+
+.tab--selected {
+    background-color: #ffe9f2 !important;
+    color: #8a3b5a !important;
+    border-top: 3px solid #ffc1d9 !important;   /* very soft accent */
+    box-shadow: 0 -3px 10px rgba(200, 80, 130, 0.12);
+    border-radius: 14px 14px 0 0 !important;
+}
+
+/* Prevent container clipping */
+.tab-container {
+    border-radius: 16px !important;
+}
+
+/* ============================
+   SIDEBAR (dbc.Nav)
+============================ */
+.nav-pills .nav-link {
+    color: #bd7290 !important;
+    background-color: transparent !important;
+    border-radius: 999px;
+    margin-bottom: 10px;
+    font-weight: 600;
+}
+
+.nav-pills .nav-link:hover {
+    background-color: #fff0f6 !important;
+}
+
+.nav-pills .nav-link.active {
+    background-color: #faecf2 !important;   /* light pastel active */
+    color: #7a3652 !important;
+    box-shadow: 0 4px 10px rgba(200, 80, 130, 0.18);
+}
+
+/* Sidebar column background */
+.sidebar {
+    background-color: #fff0f6;
+    min-height: 100vh;
+    padding: 25px;
+    box-shadow: 4px 0 12px rgba(200, 80, 130, 0.08);
+}
+
+/* ============================
+   CARD-STYLE CONTENT BLOCKS
+============================ */
+.card-soft {
+    background-color: white;
+    border-radius: 18px;
+    padding: 24px;
+    margin-bottom: 25px;
+    box-shadow: 0 6px 18px rgba(200, 80, 130, 0.12);
+}
+
+/* ============================
+   HEADERS & TEXT
+============================ */
+h1, h2, h3 {
+    color: #7a3652;
+    font-weight: 700;
+}
+
+label {
+    color: #7a3652;
+    font-weight: 600;
+}
+
+/* ============================
+   SLIDERS
+============================ */
+.rc-slider-track {
+    background-color: #ffc1d9 !important;
+}
+
+.rc-slider-handle {
+    border-color: #ffc1d9 !important;
+}
+
+/* ============================
+   TABLE
+============================ */
+.ag-theme-alpine {
+    border-radius: 16px;
+    box-shadow: 0 6px 14px rgba(200, 80, 130, 0.10);
+}
+
