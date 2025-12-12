@@ -1,0 +1,11 @@
+dash-ag-grid
+dash
+pandas
+plotly
+scikit-learn
+dash-bootstrap-components
+gower
+matplotlib
+seaborn
+numpy
+scipy
