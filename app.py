@@ -1,7 +1,5 @@
 # %%
-# Mental Health Dashboard
 
-# ---------- Imports ----------
 import pandas as pd
 import numpy as np
 import plotly.express as px
@@ -9,6 +7,7 @@ import plotly.graph_objects as go
 import seaborn as sns
 import zipfile
 import io
+import pickle
 
 from dash import Dash, html, dcc, callback, Output, Input, dash
 import dash_ag_grid as dag
@@ -42,7 +41,24 @@ from sklearn.cluster import AgglomerativeClustering
 from sklearn.metrics import silhouette_score
 from plotly.subplots import make_subplots
 
-# Unzip data file
+
+# --------------------------
+# Load precomputed HAC figures
+# --------------------------
+with open("hac_sil_fig.pkl", "rb") as f:
+    hac_sil_fig = pickle.load(f)
+with open("hac_heatmap_fig.pkl", "rb") as f:
+    hac_heatmap_fig = pickle.load(f)
+with open("hac_cat_fig.pkl", "rb") as f:
+    hac_cat_fig = pickle.load(f)
+with open("fig_mh_bar.pkl", "rb") as f:
+    fig_mh_bar = pickle.load(f)
+with open("fig_violin.pkl", "rb") as f:
+    fig_violin = pickle.load(f)
+
+# --------------------------
+# Load main dataset
+# --------------------------
 zip_file_name = 'CDC-2019-2021-2023-DATA.csv.zip'
 csv_file_name = 'CDC-2019-2021-2023-DATA.csv'
 
@@ -92,7 +108,6 @@ with zipfile.ZipFile(lr_zip, mode='r') as archive1:
         lr_data = pd.read_csv(csv_file1,low_memory=False)
 
 lr_data = lr_data.drop(["Unnamed: 0"], axis=1)
-
 ace_vars = ["ACEDEPRS", "ACESWEAR", "ACETTHEM"]
 num_cols_base = ["AVEDRNK3", "EXEROFT1", "STRENGTH", "PHYSHLTH", "POORHLTH"]
 other_cat_cols = ["IYEAR", "EMPLOY1"]
@@ -235,10 +250,257 @@ fig_ace.update_layout(
     ],
 )
 
-# ============================================================
-#   LOGISTIC REGRESSION function
-# ============================================================
+# --------------------------
+# Dash App Initialization
+# --------------------------
+external_stylesheets = [dbc.themes.BOOTSTRAP]
+app = Dash(
+    __name__, external_stylesheets=external_stylesheets, suppress_callback_exceptions=True
+)
 
+# --------------------------
+# App Layout
+# --------------------------
+app.layout = html.Div([
+    html.H1(children="Behavioral Risk Mental Health Dashboard"),
+    dcc.Tabs(id="tabs", value="tab1", children=[
+        dcc.Tab(label="README: Project Overview", value="tab1"),
+        dcc.Tab(label="Data Table", value="tab2"),
+        dcc.Tab(label="Models", value="tab3"),
+    ]),
+    html.Div(id="tabs-content")
+])
+
+# --------------------------
+# Render Tab Content
+# --------------------------
+@callback(Output("tabs-content", "children"), Input("tabs", "value"))
+def render_content(tab):
+    if tab == 'tab1':
+        return html.Div([
+                html.H2('Behavioral Risk Mental Health Dashboard: Predicting Mental Health with Behavioral Risk Factor Variables'),
+                html.P('''This app uses behavioral risk variables from 2019, 2021, and 2023 to predict mental health outcomes,
+                          focusing primarily on variables relating to adverse childhood experiences, as well as a few other variables.'''),
+                
+                html.H3('About the Dataset'),
+                html.P('''This dataset comes from the CDC\'s Behavioral Risk Factor Surveillance System,
+                          a system of comprehensive telephone surveys conducted every year regarding health-related risk behaviors,
+                          chronic health conditions, and use of preventative health services for adults in the United States. Each row
+                          represents a single respondent with variables including birth sex, year survey was taken, and over 100 behavioral risk
+                          related variables. More information can be gathered at this link : https://www.cdc.gov/brfss/about/brfss_faq.htm
+                       ''' ),
+
+                html.H3('Target Variables'),
+                html.U('Logistic Regression and K Nearest Neighbor'),
+                html.P([html.B('ADDEPEV3: '),'''Answer to survey question: (Ever told) (you had) a depressive disorder 
+                                                (including depression, major depression, dysthymia, or minor depression)?''']),
+                html.U('Linear Regression and Lasso Regularization'),                                
+                html.P([html.B('MENTHLTH: '),'''Answer to survey question: Now thinking about your mental health, which includes stress, 
+                                                depression, and problems with emotions, for how many days during the past 30 days was your 
+                                                mental health not good?''']),                                
+                html.H3('Predictor Variables'),
+                html.Ul([
+                    html.Li([html.B('BIRTHSEX: '),'Assigned sex of respondent at birth']),
+                    html.Li([html.B('IYEAR: '), 'Year the respondent took the survey']),
+                    html.Li([html.B('POORHLTH: '),'''Answer to survey question: During the past 30 days, for about how many days did poor physical or mental health 
+                                                   keep you from doing your usual activities, such as self-care, work, or recreation?''']),
+                    html.Li([html.B('MENTHLTH: '), '''Answer to survey question:Now thinking about your mental health, 
+                                                     which includes stress, depression, and problems with emotions, 
+                                                     for how many days during the past 30 days was your mental health not good?''']),
+                    html.Li([html.B('DECIDE: '), '''Answer to survey question: Because of a physical, mental, or emotional condition, 
+                                                   do you have serious difficulty concentrating, remembering, or making decisions?''']),
+                    html.Li([html.B('DIFFALON: '), '''Answer to survey question: Because of a physical, mental, or emotional condition, 
+                                                     do you have difficulty doing errands alone such as visiting a doctor's office or shopping?''']),
+                    html.Li([html.B('ACEDEPRS: '), 'Answer to survey question: (As a child) Did you live with anyone who was depressed, mentally ill, or suicidal?']),
+                    html.Li([html.B('ACEDRINK: '), 'Answer to survey question: (As a child) Did you live with anyone who was a problem drinker or alcoholic?']),
+                    html.Li([html.B('ACEDRUGS: '), 'Answer to survey question: (As a child) Did you live with anyone who used illegal street drugs or who abused prescription medications?']),
+                    html.Li([html.B('ACEPRISN: '), 'Answer to survey question: (As a child) Did you live with anyone who served time or was sentenced to serve time in a prison, jail, or other correctional facility?']),
+                    html.Li([html.B('ACEDIVRC: '), 'Answer to survey question: (As a child) Were your parents separated or divorced?']),
+                    html.Li([html.B('ACEPUNCH: '), 'Answer to survey question: (As a child) How often did your parents or adults in your home ever slap, hit, kick, punch or beat each other up?']),
+                    html.Li([html.B('ACEHURT1: '), 'Answer to survey question: (As a child) Not including spanking, (before age 18), how often did a parent or adult in your home ever hit, beat, kick, or physically hurt you in any way?']),
+                    html.Li([html.B('ACESWEAR: '), 'Answer to survey question: (As a child) How often did a parent or adult in your home ever swear at you, insult you, or put you down']),
+                    html.Li([html.B('ACETOUCH: '), 'Answer to survey question: (As a child) How often did anyone at least 5 years older than you or an adult, ever touch you sexually?']),
+                    html.Li([html.B('ACETTHEM: '), 'Answer to survey question: (As a child) How often did anyone at least 5 years older than you or an adult, try to make you touch them sexually?']),
+                    html.Li([html.B('ACEHVSEX: '), 'Answer to survey question: (As a child) How often did anyone at least 5 years older than you or an adult, force you to have sex?']),
+                    html.Li([html.B('EMPLOY1: '), '''Answer to survey question: Are you currently... (Employed for wages, Self-employed, Out of work for 1 year or more, 
+                                                    Out of work for less than 1 year, A homemaker, A student, Retired, or Unable to work)?''']),
+                    html.Li([html.B('AVEDRNK3: '), 'Answer to survey question: During the past 30 days, on the days when you drank, about how many drinks did you drink on the average?']),
+                    html.Li([html.B('EXEROFT1: '), 'Answer to survey question: How many times per week or per month did you take part in this (physical) activity during the past month?']),
+                    html.Li([html.B('STRENGTH: '), 'Answer to survey question: During the past month, how many times per week or per month did you do physical activities or exercises to STRENGTHEN your muscles?']),
+                    html.Li([html.B('PHYSHLTH: '), '''Answer to survey question: Now thinking about your physical health, which includes physical illness and injury, 
+                                                for how many days during the past 30 days was your physical health not good?'''])
+                        ]),
+
+                html.H3('Key Features of Dashboard'),
+                html.Ul([
+                    html.Li('View rows of the final cleaned dataset in the Data Table tab'),
+                    html.Li('See results and interact with variables of the different models in the Models tab')
+                        ]),
+
+                html.H3('Instructions for Use'),
+                html.Ul([
+                    html.Li('Select from K Nearest Neighbor, Logistic Regression, Logistic Regression, Hierarchical Agglomerative Clustering models on the sidebar within the Models tab'),
+                    html.Li('Change hyperparameters, such as number of neighbors and train test split, to your liking to view different versions of the Logistic Regression model'),
+                    html.Li('Most visualizations are interactive, so hovering over different parts will show more detailed information.'),
+                    html.Li('Dropdown menus in visualizations will allow you to visualize different variables'),
+                    html.Li('Click on variables in the legend of the violin plots and bar graphs of the Hierarchical Clustering tab to isolate variables to visualize'),
+                    html.Li('Note: the KNN tab takes a bit of time to render, so please be patient!')
+                        ]),
+
+                html.H3('Authors'),
+                html.P('''Randa Ampah, Isabel Delgado, Aysha Hussen, Aniyah McWilliams, 
+                          and Jessica Oseghale for the DS 6021 Final Project in the Fall 
+                          25 semester of the UVA MSDS program''')
+
+        ])
+
+    elif tab == "tab2":
+        return html.Div([
+            dag.AgGrid(
+                rowData=df.to_dict("records"),
+                columnDefs=[{"field": i} for i in df.columns]
+            )
+        ])
+
+    elif tab == "tab3":
+        return dbc.Container(fluid=True, children=[
+            dbc.Row([
+                dbc.Col(
+                    dbc.Nav([
+                        dbc.NavLink("K Nearest Neighbor", href="/models/knn", active="exact"),
+                        dbc.NavLink("Logistic Regression", href="/models/logit", active="exact"),
+                        dbc.NavLink("Multiple Linear Regression w/ Lasso", href="/models/linear", active="exact"),
+                        dbc.NavLink("Hierarchical Clustering", href="/models/hierarchichal", active="exact")
+                    ], vertical=True, pills=True),
+                    width=2,
+                    style={"backgroundColor": "#f8f9fa", "padding": "20px", "height": "100vh"}
+                ),
+                dbc.Col(html.Div(id="sub-tabs-content"), width=10, style={"padding": "40px"})
+            ]),
+            dcc.Location(id="url")
+        ])
+
+# --------------------------
+# Sidebar Callback
+# --------------------------
+@callback(Output("sub-tabs-content", "children"), Input("url", "pathname"))
+def update_sidebar_content(pathname):
+
+    if pathname == "/models/knn":
+        fig, knn_roc_fig, knn_met, knn_scatter, knn_cm = do_knn(logit_knn_X, logit_knn_y)
+        return html.Div([
+            html.H2("K-Nearest Neighbor Classifier"),
+            html.P(''),
+            html.H3('Best K from Cross Validation'),
+            html.P(''),
+            dcc.Graph(figure=fig),
+            html.H3('Model Results'),
+            html.H4('Confusion Matrix of Predictions'),
+            dcc.Graph(figure=knn_cm),
+            html.Div([knn_met]),
+            dcc.Graph(figure=knn_roc_fig),
+            html.H3('Relevant Graphs'),
+            html.P(''),
+            dcc.Graph(figure=knn_scatter)
+        ])
+    elif pathname == "/models/logit":
+        return html.Div(
+            [
+                html.H2("Logistic Regression Model"),
+                html.Label("Test set size (%)"),
+                dcc.Slider(
+                    id="test-size-slider",
+                    min=10,
+                    max=50,
+                    step=5,
+                    value=30,
+                    marks={i: f"{i}%" for i in range(10, 55, 5)},
+                ),
+                html.Br(),
+                html.Label("Classification threshold"),
+                dcc.Slider(
+                    id="threshold-slider",
+                    min=0.1,
+                    max=0.9,
+                    step=0.05,
+                    value=0.7,
+                ),
+                html.Br(),
+                html.Div(id="logit-metrics"),
+                html.H4('Confusion Matrix of Predictions'),
+                dcc.Graph(id="logit-confusion"),
+                dcc.Graph(id="logit-roc"),
+                dcc.Graph(id="logit-coefs"),
+            ]
+        )
+
+    elif pathname == "/models/linear":
+        return html.Div(
+            [
+                html.H2("Multiple Linear Regression (Spline with ACE Variables)"),
+                html.P(''),
+                html.H3("Lasso Regularization"),
+                html.P('Lasso regularization was used to identify the most influential predictors to use within the linear regression model.'),
+                html.Img(src='/assets/lasso_pic.png', 
+                         alt='Lasso Results',
+                         style={"width": "100%",
+                                "height": "auto",
+                                "display": "block"}),
+                html.H3('MLR Results'),
+                dcc.Graph(figure=fig_ace),
+                html.Br(),
+                html.H3("Model Performance Metrics"),
+                html.Table(
+                    [
+                        html.Thead(
+                            html.Tr(
+                                [
+                                    html.Th("ACE Variable"),
+                                    html.Th("Train RMSE"),
+                                    html.Th("Test RMSE"),
+                                    html.Th("Train Adj R²"),
+                                    html.Th("Test Adj R²"),
+                                ]
+                            )
+                        ),
+                        html.Tbody(
+                            [
+                                html.Tr(
+                                    [
+                                        html.Td(ace_labels_pretty[ace]),
+                                        html.Td(
+                                            f"{ace_metrics[ace]['Train RMSE']:.3f}"
+                                        ),
+                                        html.Td(
+                                            f"{ace_metrics[ace]['Test RMSE']:.3f}"
+                                        ),
+                                        html.Td(
+                                            f"{ace_metrics[ace]['Train Adj R2']:.3f}"
+                                        ),
+                                        html.Td(
+                                            f"{ace_metrics[ace]['Test Adj R2']:.3f}"
+                                        ),
+                                    ]
+                                )
+                                for ace in ace_vars
+                            ]
+                        ),
+                    ],
+                    style={"width": "70%", "margin": "auto"},
+                ),
+            ]
+        )
+    elif pathname == "/models/hierarchichal":
+        return html.Div([
+            html.H2("Hierarchical Agglomerative Clustering (Gower distance)"),
+            dcc.Graph(figure=hac_sil_fig),
+            dcc.Graph(figure=hac_heatmap_fig),
+            dcc.Graph(figure=hac_cat_fig),
+            dcc.Graph(figure=fig_mh_bar),
+            dcc.Graph(figure=fig_violin),
+        ])
+
+    return html.Div("Select a model from the sidebar.")
 
 def do_logit(X, y, test_size, threshold):
     """
@@ -465,593 +727,6 @@ def do_knn(X, y):
 
     return fig, knn_roc_fig, knn_met, knn_scatter, knn_cm
 
-
-# ============================================================
-#   HIERARCHICAL CLUSTERING: precompute clusters & figures
-# ============================================================
-
-ace_YN = ["ACEDEPRS", "ACEDRINK", "ACEDRUGS", "ACEPRISN", "ACEDIVRC"]
-ace_NOM = ["ACEPUNCH", "ACEHURT1", "ACESWEAR", "ACETOUCH", "ACETTHEM", "ACEHVSEX"]
-cat_cols = ace_YN + ace_NOM
-cat_mh_cols = ["ADDEPEV3", "DECIDE", "DIFFALON"]
-num_mh_cols = ["MENTHLTH", "POORHLTH"]
-
-df_hac = df.dropna(subset=cat_cols + cat_mh_cols + num_mh_cols).copy()
-
-# sample for gower to keep things manageable
-df_sample = (
-    df_hac.sample(n=10000, random_state=42)
-    if len(df_hac) > 10000
-    else df_hac.copy()
-)
-
-distance_matrix = gower_matrix(df_sample[cat_cols])
-Z = linkage(squareform(distance_matrix, checks=False), method="average")
-
-# silhouette for k=2..4
-sil_results = []
-for k in range(2, 5):
-    model = AgglomerativeClustering(
-        n_clusters=k, metric="precomputed", linkage="average"
-    )
-    labels_k = model.fit_predict(distance_matrix)
-    sil = silhouette_score(distance_matrix, labels_k, metric="precomputed")
-    sil_results.append({"k": k, "silhouette": sil})
-
-sil_df = pd.DataFrame(sil_results)
-best_k = int(sil_df.loc[sil_df["silhouette"].idxmax(), "k"])
-
-hac_sil_fig = px.line(
-    sil_df,
-    x="k",
-    y="silhouette",
-    markers=True,
-    title="Silhouette Scores for Different K (Gower Distance)",
-)
-
-# final model at best_k (should be 2)
-final_model = AgglomerativeClustering(
-    n_clusters=best_k, metric="precomputed", linkage="average"
-)
-final_labels = final_model.fit_predict(distance_matrix)
-
-df_sample = df_sample.reset_index(drop=True)
-df_sample["cluster"] = final_labels
-
-# map ADDEPEV3 back to Yes/No for plots
-df_sample["ADDEPEV3"] = df_sample["ADDEPEV3"].replace(
-    {0.0: "No", 1.0: "Yes", 0: "No", 1: "Yes"}
-)
-
-# ----- ACE HEATMAP -----
-heatmap_matrix = []
-heatmap_labels = []
-
-for col in cat_cols:
-    if col in df_sample.columns:
-        crosstab = (
-            pd.crosstab(df_sample["cluster"], df_sample[col], normalize="index") * 100
-        )
-        for category in crosstab.columns:
-            heatmap_matrix.append(
-                [crosstab.loc[0, category], crosstab.loc[1, category]]
-            )
-            heatmap_labels.append(f"{col}: {category}")
-
-heatmap_matrix = np.array(heatmap_matrix)
-
-custom_colors = [
-    [0.0, "#d1eeff"],
-    [0.33, "#6b8cce"],
-    [0.66, "#9b59b6"],
-    [1.0, "#ff69b4"],
-]
-
-row_height = 35
-dynamic_height = max(600, len(heatmap_labels) * row_height)
-
-hac_heatmap_fig = go.Figure(
-    data=go.Heatmap(
-        z=heatmap_matrix,
-        y=heatmap_labels,
-        x=["High ACE / High risk", "Low ACE / Low risk"],
-        colorscale=custom_colors,
-        text=np.round(heatmap_matrix, 1),
-        texttemplate="%{text}%",
-        textfont={"size": 11},
-        colorbar=dict(title="Percentage (%)"),
-        xgap=2,
-        ygap=2,
-    )
-)
-
-hac_heatmap_fig.update_layout(
-    title="All ACE Variables: Proportion Heatmap by Cluster",
-    xaxis_title="Cluster",
-    yaxis_title="Variable & Category",
-    height=dynamic_height,
-    yaxis=dict(dtick=1, automargin=True),
-)
-
-# ----- ACE DROPDOWN BAR CHART -----
-color_c0 = "#6b8cce"
-color_c1 = "#ff69b4"
-
-hac_cat_fig = go.Figure()
-buttons = []
-
-for i, col in enumerate(cat_cols):
-    crosstab = (
-        pd.crosstab(df_sample["cluster"], df_sample[col], normalize="index") * 100
-    )
-    categories = crosstab.columns.tolist()
-
-    is_visible = i == 0
-
-    hac_cat_fig.add_trace(
-        go.Bar(
-            x=categories,
-            y=crosstab.loc[0],
-            name="High ACE / High risk",
-            marker_color=color_c0,
-            visible=is_visible,
-        )
-    )
-    hac_cat_fig.add_trace(
-        go.Bar(
-            x=categories,
-            y=crosstab.loc[1],
-            name="Low ACE / Low risk",
-            marker_color=color_c1,
-            visible=is_visible,
-        )
-    )
-
-    visible_settings = [False] * (len(cat_cols) * 2)
-    visible_settings[2 * i] = True
-    visible_settings[2 * i + 1] = True
-
-    buttons.append(
-        dict(
-            label=col,
-            method="update",
-            args=[
-                {"visible": visible_settings},
-                {"title": f"ACE Category by Cluster: {col}"},
-            ],
-        )
-    )
-
-hac_cat_fig.update_layout(
-    title=f"ACE Category by Cluster: {cat_cols[0]}",
-    yaxis_title="Percentage (%)",
-    xaxis_title="Category",
-    barmode="group",
-    height=600,
-    margin=dict(r=200),
-    legend=dict(x=1.05, y=1.0, xanchor="left", yanchor="top"),
-    updatemenus=[
-        dict(
-            buttons=buttons,
-            direction="down",
-            pad={"r": 10, "t": 10},
-            showactive=True,
-            x=1.05,
-            xanchor="left",
-            y=0.85,
-            yanchor="top",
-        )
-    ],
-)
-
-# ----- MENTAL HEALTH BAR SUBPLOTS -----
-mh_titles = [
-    "Depressive Disorder Diagnosis",
-    "Difficulty Concentrating / Deciding",
-    "Difficulty Doing Errands Alone",
-]
-fig_mh_bar = make_subplots(
-    rows=3, cols=1, subplot_titles=mh_titles, vertical_spacing=0.1
-)
-
-c0_color = "#6b8cce"
-c1_color = "#ff69b4"
-
-for i, col in enumerate(cat_mh_cols):
-    ct = (
-        pd.crosstab(df_sample["cluster"], df_sample[col], normalize="index") * 100
-    )
-    labels = ct.columns.astype(str)
-
-    fig_mh_bar.add_trace(
-        go.Bar(
-            x=labels,
-            y=ct.loc[0],
-            name="High ACE / High risk",
-            marker_color=c0_color,
-            showlegend=(i == 0),
-        ),
-        row=i + 1,
-        col=1,
-    )
-
-    fig_mh_bar.add_trace(
-        go.Bar(
-            x=labels,
-            y=ct.loc[1],
-            name="Low ACE / Low risk",
-            marker_color=c1_color,
-            showlegend=(i == 0),
-        ),
-        row=i + 1,
-        col=1,
-    )
-
-fig_mh_bar.update_layout(
-    title="Mental Health & Functional Difficulties by Cluster",
-    barmode="group",
-    height=800,
-    width=900,
-    bargap=0.4,
-    bargroupgap=0.1,
-)
-for r in [1, 2, 3]:
-    fig_mh_bar.update_yaxes(title_text="Percentage (%)", row=r, col=1)
-
-# ----- SPLIT VIOLIN FOR UNHEALTHY DAYS -----
-fig_violin = go.Figure()
-metrics = ["MENTHLTH", "POORHLTH"]
-x_labels = ["Mental health not good (days)", "Poor health limits activities (days)"]
-
-for i, col in enumerate(metrics):
-    show_legend = i == 0
-
-    fig_violin.add_trace(
-        go.Violin(
-            y=df_sample[df_sample["cluster"] == 0][col],
-            x=[x_labels[i]] * len(df_sample[df_sample["cluster"] == 0]),
-            legendgroup="High ACE / High risk",
-            scalegroup="Cluster0",
-            name="High ACE / High risk",
-            side="negative",
-            line_color=c0_color,
-            fillcolor=c0_color,
-            opacity=0.6,
-            meanline_visible=True,
-            showlegend=show_legend,
-            spanmode="hard",
-        )
-    )
-
-    fig_violin.add_trace(
-        go.Violin(
-            y=df_sample[df_sample["cluster"] == 1][col],
-            x=[x_labels[i]] * len(df_sample[df_sample["cluster"] == 1]),
-            legendgroup="Low ACE / Low risk",
-            scalegroup="Cluster1",
-            name="Low ACE / Low risk",
-            side="positive",
-            line_color=c1_color,
-            fillcolor=c1_color,
-            opacity=0.6,
-            meanline_visible=True,
-            showlegend=show_legend,
-            spanmode="hard",
-        )
-    )
-
-fig_violin.update_traces(width=0.5, points=False)
-fig_violin.update_layout(
-    title="Distribution of Unhealthy Days by Cluster (Split Violin)",
-    xaxis_title="Health Metric",
-    yaxis=dict(title="Days (0–30)", range=[0, 30]),
-    violingap=0,
-    violingroupgap=0,
-    violinmode="overlay",
-    height=600,
-    legend=dict(title="Cluster group"),
-)
-
-# ============================================================
-#   DASH APP LAYOUT
-# ============================================================
-
-external_stylesheets = [dbc.themes.BOOTSTRAP]
-app = Dash(
-    __name__, external_stylesheets=external_stylesheets, suppress_callback_exceptions=True
-)
-
-app.layout = html.Div(
-    [
-        html.H1(children="Behavioral Risk Mental Health Dashboard"),
-        dcc.Tabs(
-            id="tabs",
-            value="tab1",
-            children=[
-                dcc.Tab(label="README: Project Overview", value="tab1"),
-                dcc.Tab(label="Data Table", value="tab2"),
-                dcc.Tab(label="Models", value="tab3"),
-            ],
-        ),
-        html.Div(id="tabs-content"),
-    ]
-)
-
-
-@callback(Output("tabs-content", "children"), Input("tabs", "value"))
-def render_content(tab):
-    if tab == 'tab1':
-        return html.Div([
-                html.H2('Behavioral Risk Mental Health Dashboard: Predicting Mental Health with Behavioral Risk Factor Variables'),
-                html.P('''This app uses behavioral risk variables from 2019, 2021, and 2023 to predict mental health outcomes,
-                          focusing primarily on variables relating to adverse childhood experiences, as well as a few other variables.'''),
-                
-                html.H3('About the Dataset'),
-                html.P('''This dataset comes from the CDC\'s Behavioral Risk Factor Surveillance System,
-                          a system of comprehensive telephone surveys conducted every year regarding health-related risk behaviors,
-                          chronic health conditions, and use of preventative health services for adults in the United States. Each row
-                          represents a single respondent with variables including birth sex, year survey was taken, and over 100 behavioral risk
-                          related variables. More information can be gathered at this link : https://www.cdc.gov/brfss/about/brfss_faq.htm
-                       ''' ),
-
-                html.H3('Target Variables'),
-                html.U('Logistic Regression and K Nearest Neighbor'),
-                html.P([html.B('ADDEPEV3: '),'''Answer to survey question: (Ever told) (you had) a depressive disorder 
-                                                (including depression, major depression, dysthymia, or minor depression)?''']),
-                html.U('Linear Regression and Lasso Regularization'),                                
-                html.P([html.B('MENTHLTH: '),'''Answer to survey question: Now thinking about your mental health, which includes stress, 
-                                                depression, and problems with emotions, for how many days during the past 30 days was your 
-                                                mental health not good?''']),                                
-                html.H3('Predictor Variables'),
-                html.Ul([
-                    html.Li([html.B('BIRTHSEX: '),'Assigned sex of respondent at birth']),
-                    html.Li([html.B('IYEAR: '), 'Year the respondent took the survey']),
-                    html.Li([html.B('POORHLTH: '),'''Answer to survey question: During the past 30 days, for about how many days did poor physical or mental health 
-                                                   keep you from doing your usual activities, such as self-care, work, or recreation?''']),
-                    html.Li([html.B('MENTHLTH: '), '''Answer to survey question:Now thinking about your mental health, 
-                                                     which includes stress, depression, and problems with emotions, 
-                                                     for how many days during the past 30 days was your mental health not good?''']),
-                    html.Li([html.B('DECIDE: '), '''Answer to survey question: Because of a physical, mental, or emotional condition, 
-                                                   do you have serious difficulty concentrating, remembering, or making decisions?''']),
-                    html.Li([html.B('DIFFALON: '), '''Answer to survey question: Because of a physical, mental, or emotional condition, 
-                                                     do you have difficulty doing errands alone such as visiting a doctor's office or shopping?''']),
-                    html.Li([html.B('ACEDEPRS: '), 'Answer to survey question: (As a child) Did you live with anyone who was depressed, mentally ill, or suicidal?']),
-                    html.Li([html.B('ACEDRINK: '), 'Answer to survey question: (As a child) Did you live with anyone who was a problem drinker or alcoholic?']),
-                    html.Li([html.B('ACEDRUGS: '), 'Answer to survey question: (As a child) Did you live with anyone who used illegal street drugs or who abused prescription medications?']),
-                    html.Li([html.B('ACEPRISN: '), 'Answer to survey question: (As a child) Did you live with anyone who served time or was sentenced to serve time in a prison, jail, or other correctional facility?']),
-                    html.Li([html.B('ACEDIVRC: '), 'Answer to survey question: (As a child) Were your parents separated or divorced?']),
-                    html.Li([html.B('ACEPUNCH: '), 'Answer to survey question: (As a child) How often did your parents or adults in your home ever slap, hit, kick, punch or beat each other up?']),
-                    html.Li([html.B('ACEHURT1: '), 'Answer to survey question: (As a child) Not including spanking, (before age 18), how often did a parent or adult in your home ever hit, beat, kick, or physically hurt you in any way?']),
-                    html.Li([html.B('ACESWEAR: '), 'Answer to survey question: (As a child) How often did a parent or adult in your home ever swear at you, insult you, or put you down']),
-                    html.Li([html.B('ACETOUCH: '), 'Answer to survey question: (As a child) How often did anyone at least 5 years older than you or an adult, ever touch you sexually?']),
-                    html.Li([html.B('ACETTHEM: '), 'Answer to survey question: (As a child) How often did anyone at least 5 years older than you or an adult, try to make you touch them sexually?']),
-                    html.Li([html.B('ACEHVSEX: '), 'Answer to survey question: (As a child) How often did anyone at least 5 years older than you or an adult, force you to have sex?']),
-                    html.Li([html.B('EMPLOY1: '), '''Answer to survey question: Are you currently... (Employed for wages, Self-employed, Out of work for 1 year or more, 
-                                                    Out of work for less than 1 year, A homemaker, A student, Retired, or Unable to work)?''']),
-                    html.Li([html.B('AVEDRNK3: '), 'Answer to survey question: During the past 30 days, on the days when you drank, about how many drinks did you drink on the average?']),
-                    html.Li([html.B('EXEROFT1: '), 'Answer to survey question: How many times per week or per month did you take part in this (physical) activity during the past month?']),
-                    html.Li([html.B('STRENGTH: '), 'Answer to survey question: During the past month, how many times per week or per month did you do physical activities or exercises to STRENGTHEN your muscles?']),
-                    html.Li([html.B('PHYSHLTH: '), '''Answer to survey question: Now thinking about your physical health, which includes physical illness and injury, 
-                                                for how many days during the past 30 days was your physical health not good?'''])
-                        ]),
-
-                html.H3('Key Features of Dashboard'),
-                html.Ul([
-                    html.Li('View rows of the final cleaned dataset in the Data Table tab'),
-                    html.Li('See results and interact with variables of the different models in the Models tab')
-                        ]),
-
-                html.H3('Instructions for Use'),
-                html.Ul([
-                    html.Li('Select from K Nearest Neighbor, Logistic Regression, Logistic Regression, Hierarchical Agglomerative Clustering models on the sidebar within the Models tab'),
-                    html.Li('Change hyperparameters, such as number of neighbors and train test split, to your liking to view different versions of the Logistic Regression model'),
-                    html.Li('Most visualizations are interactive, so hovering over different parts will show more detailed information.'),
-                    html.Li('Dropdown menus in visualizations will allow you to visualize different variables'),
-                    html.Li('Click on variables in the legend of the violin plots and bar graphs of the Hierarchical Clustering tab to isolate variables to visualize'),
-                    html.Li('Note: the KNN tab takes a bit of time to render, so please be patient!')
-                        ]),
-
-                html.H3('Authors'),
-                html.P('''Randa Ampah, Isabel Delgado, Aysha Hussen, Aniyah McWilliams, 
-                          and Jessica Oseghale for the DS 6021 Final Project in the Fall 
-                          25 semester of the UVA MSDS program''')
-
-        ])
-
-    if tab == "tab2":
-        return html.Div(
-            [
-                dag.AgGrid(
-                    rowData=df.to_dict("records"),
-                    columnDefs=[{"field": i} for i in df.columns],
-                )
-            ]
-        )
-
-    if tab == "tab3":
-        return dbc.Container(
-            fluid=True,
-            children=[
-                dbc.Row(
-                    [
-                        dbc.Col(
-                            dbc.Nav(
-                                [
-                                    dbc.NavLink(
-                                        "K Nearest Neighbor",
-                                        href="/models/knn",
-                                        active="exact",
-                                    ),
-                                    dbc.NavLink(
-                                        "Logistic Regression",
-                                        href="/models/logit",
-                                        active="exact",
-                                    ),
-                                    dbc.NavLink(
-                                        "Multiple Linear Regression w/ Lasso",
-                                        href="/models/linear",
-                                        active="exact",
-                                    ),
-                                    dbc.NavLink(
-                                        "Hierarchical Clustering",
-                                        href="/models/hierarchichal",
-                                        active="exact",
-                                    )
-                                ],
-                                vertical=True,
-                                pills=True,
-                            ),
-                            width=2,
-                            style={
-                                "backgroundColor": "#f8f9fa",
-                                "padding": "20px",
-                                "height": "100vh",
-                            },
-                        ),
-                        dbc.Col(
-                            html.Div(id="sub-tabs-content"),
-                            width=10,
-                            style={"padding": "40px"},
-                        ),
-                    ]
-                ),
-                dcc.Location(id="url"),
-            ],
-        )
-
-
-@callback(Output("sub-tabs-content", "children"), Input("url", "pathname"))
-def update_sidebar_content(pathname):
-    if pathname == "/models/knn":
-        fig, knn_roc_fig, knn_met, knn_scatter, knn_cm = do_knn(logit_knn_X, logit_knn_y)
-        return html.Div(
-            [
-                html.H2("K-Nearest Neighbor Classifier"),
-                html.P(''),
-                html.H3('Best K from Cross Validation'),
-                html.P(''),
-                dcc.Graph(figure=fig),
-                html.H3('Model Results'),
-                html.H4('Confusion Matrix of Predictions'),
-                dcc.Graph(figure=knn_cm),
-                html.P(''),
-                html.Div([knn_met]),
-                dcc.Graph(figure=knn_roc_fig),
-                html.H3('Relevant Graphs'),
-                html.P(''),
-                dcc.Graph(figure=knn_scatter)
-            ]
-        )
-
-    elif pathname == "/models/logit":
-        return html.Div(
-            [
-                html.H2("Logistic Regression Model"),
-                html.Label("Test set size (%)"),
-                dcc.Slider(
-                    id="test-size-slider",
-                    min=10,
-                    max=50,
-                    step=5,
-                    value=30,
-                    marks={i: f"{i}%" for i in range(10, 55, 5)},
-                ),
-                html.Br(),
-                html.Label("Classification threshold"),
-                dcc.Slider(
-                    id="threshold-slider",
-                    min=0.1,
-                    max=0.9,
-                    step=0.05,
-                    value=0.7,
-                ),
-                html.Br(),
-                html.Div(id="logit-metrics"),
-                html.H4('Confusion Matrix of Predictions'),
-                dcc.Graph(id="logit-confusion"),
-                dcc.Graph(id="logit-roc"),
-                dcc.Graph(id="logit-coefs"),
-            ]
-        )
-
-    elif pathname == "/models/linear":
-        return html.Div(
-            [
-                html.H2("Multiple Linear Regression (Spline with ACE Variables)"),
-                html.P(''),
-                html.H3("Lasso Regularization"),
-                html.P('Lasso regularization was used to identify the most influential predictors to use within the linear regression model.'),
-                html.Img(src='/assets/lasso_pic.png', 
-                         alt='Lasso Results',
-                         style={"width": "100%",
-                                "height": "auto",
-                                "display": "block"}),
-                html.H3('MLR Results'),
-                dcc.Graph(figure=fig_ace),
-                html.Br(),
-                html.H3("Model Performance Metrics"),
-                html.Table(
-                    [
-                        html.Thead(
-                            html.Tr(
-                                [
-                                    html.Th("ACE Variable"),
-                                    html.Th("Train RMSE"),
-                                    html.Th("Test RMSE"),
-                                    html.Th("Train Adj R²"),
-                                    html.Th("Test Adj R²"),
-                                ]
-                            )
-                        ),
-                        html.Tbody(
-                            [
-                                html.Tr(
-                                    [
-                                        html.Td(ace_labels_pretty[ace]),
-                                        html.Td(
-                                            f"{ace_metrics[ace]['Train RMSE']:.3f}"
-                                        ),
-                                        html.Td(
-                                            f"{ace_metrics[ace]['Test RMSE']:.3f}"
-                                        ),
-                                        html.Td(
-                                            f"{ace_metrics[ace]['Train Adj R2']:.3f}"
-                                        ),
-                                        html.Td(
-                                            f"{ace_metrics[ace]['Test Adj R2']:.3f}"
-                                        ),
-                                    ]
-                                )
-                                for ace in ace_vars
-                            ]
-                        ),
-                    ],
-                    style={"width": "70%", "margin": "auto"},
-                ),
-            ]
-        )
-
-    elif pathname == "/models/hierarchichal":
-        return html.Div(
-            [
-                html.H2("Hierarchical Agglomerative Clustering (Gower distance)"),
-                html.P(
-                    "We cluster respondents based on their adverse childhood experiences (ACEs) "
-                    "using Gower distance, then examine how mental-health outcomes differ across clusters."
-                ),
-                dcc.Graph(figure=hac_sil_fig),
-                dcc.Graph(figure=hac_heatmap_fig),
-                dcc.Graph(figure=hac_cat_fig),
-                dcc.Graph(figure=fig_mh_bar),
-                dcc.Graph(figure=fig_violin),
-            ]
-        )
-    return html.Div("Select a model from the sidebar.")
-
-
-# ---------- LOGIT CALLBACK WITH COLORED COEFFICIENT PLOT ----------
-
-
 @callback(
     Output("logit-metrics", "children"),
     Output("logit-confusion", "figure"),
@@ -1168,11 +843,8 @@ def update_logit_tab(test_size_pct, threshold):
 
     return metrics, cm_fig, roc_fig, coef_fig
 
-
+# --------------------------
+# Run the App
+# --------------------------
 if __name__ == "__main__":
-    app.run(host="0.0.0.0",debug=True, port=8051)
-
-
-
-
-# %%
+    app.run(debug=True, port=8051)
