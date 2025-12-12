@@ -8,3 +8,4 @@ matplotlib
 seaborn
 numpy
 scipy
+gunicorn
