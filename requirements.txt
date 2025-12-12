@@ -4,7 +4,6 @@ pandas
 plotly
 scikit-learn
 dash-bootstrap-components
-gower
 matplotlib
 seaborn
 numpy
